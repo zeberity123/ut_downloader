@@ -4,6 +4,26 @@ All notable changes to **ut_download (유튜브 다운로더 by Daru)** are reco
 This project follows a loose form of [Keep a Changelog][keep-a-changelog]; date
 format is `YYYY-MM-DD`.
 
+## v1.2 — 2026-04-28
+
+### Added
+- **`폴더열기` button** next to `다운로드 시작` — opens the configured
+  destination folder in Windows Explorer (`os.startfile`) without
+  leaving the app. Falls back to a warning toast if the path doesn't
+  exist.
+- New custom-painted **folder icon** (`icons._render_folder_icon`),
+  rendered in the same outlined-polyline style as the existing
+  download / player glyphs.
+
+### Changed
+- `다운로드 시작` button shrunk to ~80 % of the action-row width
+  (4:1 stretch ratio); the new `폴더열기` button takes the remaining
+  20 %. Both share the same 42 px minimum height.
+
+### Build
+- `ffmpeg.exe` continues to be bundled inside the onefile build (no
+  external ffmpeg install required on target PCs).
+
 ## v1.1 — 2026-04-28
 
 A large iteration on the v1.0 baseline: Fluent UI for the inputs and

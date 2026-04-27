@@ -44,11 +44,11 @@ from downloader import (
     SearchWorker, LoadMoreWorker, FetchInfoWorker, DownloadWorker,
     ThumbnailWorker, SuggestWorker, AudioDownloadWorker,
 )
-from icons import player_icon, download_icon
+from icons import player_icon, download_icon, folder_icon
 from theme import build_qss
 from icons import ensure_checkbox_icons
 
-__version__ = "1.1"
+__version__ = "1.2"
 APP_TITLE = f"유튜브 다운로더 by Daru  v{__version__}"
 DEFAULT_DEST = str(Path.home() / "Downloads")
 
@@ -1072,7 +1072,23 @@ class MainWindow(QMainWindow):
         # Green tint — matches the section accent. Same flat style as 결과지우기.
         self._tint_button(self.download_btn, 158, 206, 106, font_size=17, weight=800)
         self.download_btn.clicked.connect(self.download_all)
-        v.addWidget(self.download_btn)
+
+        # Open destination folder — sits to the right of 다운로드 시작 at ~20% of the row width.
+        self.open_folder_btn = PushButton("폴더열기")
+        self.open_folder_btn.setIcon(folder_icon(18, "#bb9af7"))
+        self.open_folder_btn.setIconSize(QSize(18, 18))
+        self.open_folder_btn.setMinimumHeight(42)
+        self.open_folder_btn.setCursor(Qt.PointingHandCursor)
+        self.open_folder_btn.setToolTip("저장 폴더 열기")
+        self._tint_button(self.open_folder_btn, 187, 154, 247, font_size=14)  # purple
+        self.open_folder_btn.clicked.connect(self.open_dest_folder)
+
+        # 80% / 20% row — download is the headliner, folder open is secondary.
+        action_row = QHBoxLayout()
+        action_row.setSpacing(6)
+        action_row.addWidget(self.download_btn, 4)
+        action_row.addWidget(self.open_folder_btn, 1)
+        v.addLayout(action_row)
 
         # Fluent ProgressBar — smoother animated chunk than QProgressBar.
         self.progress_bar = ProgressBar()
@@ -1862,6 +1878,17 @@ class MainWindow(QMainWindow):
         )
         if d:
             self.dest_input.setText(d)
+
+    def open_dest_folder(self):
+        """Open the configured destination folder in Windows Explorer."""
+        path = (self.dest_input.text() or str(Path.home())).strip()
+        if not os.path.isdir(path):
+            self._toast_warn("폴더 열기", f"폴더가 존재하지 않습니다:\n{path}")
+            return
+        try:
+            os.startfile(path)   # Windows-native; opens folder in Explorer
+        except OSError as e:
+            self._toast_warn("폴더 열기", str(e))
 
     # ---------------------------------------------------------- DOWNLOAD
     def download_all(self):

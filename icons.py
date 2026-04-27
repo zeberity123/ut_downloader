@@ -130,17 +130,50 @@ def player_icon(kind: str, size: int, color: str,
     return icon
 
 
+def _render_download_icon(size: int, color: str) -> QPixmap:
+    """Crisp download glyph — round-cap shaft, V-arrowhead, base tray."""
+    pix = QPixmap(size, size)
+    pix.fill(QColor(0, 0, 0, 0))
+    p = QPainter(pix)
+    p.setRenderHint(QPainter.Antialiasing)
+
+    s = float(size)
+    pen = QPen(QColor(color))
+    pen.setWidthF(max(2.0, s * 0.13))
+    pen.setCapStyle(Qt.RoundCap)
+    pen.setJoinStyle(Qt.RoundJoin)
+    p.setPen(pen)
+    p.setBrush(Qt.NoBrush)
+
+    cx = s / 2
+    # vertical shaft
+    p.drawLine(QPointF(cx, s * 0.18), QPointF(cx, s * 0.62))
+    # arrow head (chevron pointing down)
+    p.drawLine(QPointF(s * 0.27, s * 0.46), QPointF(cx, s * 0.72))
+    p.drawLine(QPointF(s * 0.73, s * 0.46), QPointF(cx, s * 0.72))
+    # base tray
+    p.drawLine(QPointF(s * 0.20, s * 0.86), QPointF(s * 0.80, s * 0.86))
+
+    p.end()
+    return pix
+
+
+def download_icon(size: int = 22, color: str = "#16161e") -> QIcon:
+    return QIcon(_render_download_icon(size, color))
+
+
 def ensure_checkbox_icons() -> dict:
     """Write PNG icons to a temp folder and return their absolute paths.
 
-    Returns dict {'unchecked', 'checked', 'chevron_down'}.
+    Returns dict {'unchecked', 'checked', 'chevron_down', 'download_green'}.
     Paths use forward slashes (safe inside QSS url(...)).
     """
     os.makedirs(_ICON_DIR, exist_ok=True)
     paths = {
-        'unchecked':    os.path.join(_ICON_DIR, 'cbox_unchecked.png'),
-        'checked':      os.path.join(_ICON_DIR, 'cbox_checked.png'),
-        'chevron_down': os.path.join(_ICON_DIR, 'chevron_down.png'),
+        'unchecked':       os.path.join(_ICON_DIR, 'cbox_unchecked.png'),
+        'checked':         os.path.join(_ICON_DIR, 'cbox_checked.png'),
+        'chevron_down':    os.path.join(_ICON_DIR, 'chevron_down.png'),
+        'download_green':  os.path.join(_ICON_DIR, 'download_green.png'),
     }
     if not os.path.isfile(paths['unchecked']):
         _render_unchecked().save(paths['unchecked'])
@@ -148,4 +181,6 @@ def ensure_checkbox_icons() -> dict:
         _render_checked().save(paths['checked'])
     if not os.path.isfile(paths['chevron_down']):
         _render_chevron_down().save(paths['chevron_down'])
+    # Always re-render the download icon — color may change if the palette is tweaked.
+    _render_download_icon(18, "#9ece6a").save(paths['download_green'])
     return {k: v.replace('\\', '/') for k, v in paths.items()}

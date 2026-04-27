@@ -9,11 +9,14 @@ COL_BORDER_S    = "#414868"
 COL_TEXT        = "#c0caf5"
 COL_TEXT_DIM    = "#a9b1d6"
 COL_TEXT_MUTE   = "#565f89"
-COL_ACCENT      = "#7aa2f7"
-COL_ACCENT_2    = "#bb9af7"
-COL_ACCENT_3    = "#7dcfff"
-COL_DANGER      = "#f7768e"
-COL_OK          = "#9ece6a"
+COL_ACCENT      = "#7aa2f7"   # blue
+COL_ACCENT_2    = "#bb9af7"   # purple
+COL_ACCENT_3    = "#7dcfff"   # cyan
+COL_DANGER      = "#f7768e"   # red / pink
+COL_OK          = "#9ece6a"   # green
+COL_WARN        = "#e0af68"   # amber / yellow
+COL_ORANGE      = "#ff9e64"
+COL_MAGENTA     = "#ad8ee6"
 
 DARK_QSS = f"""
 * {{
@@ -45,6 +48,18 @@ QWidget#rightPane QProgressBar {{
 
 QWidget#rightPane QGroupBox::title {{
     font-size: 12px;
+}}
+
+/* Bump every input/label inside the Download Options card. Higher cascade
+   specificity than the generic rightPane rule (1 ID + 1 ID + 1 type vs 1 ID
+   + 1 type) so this wins. Fluent widgets still get a per-widget override
+   below where stronger cascade is required. */
+QGroupBox#optionsBox QLabel,
+QGroupBox#optionsBox QCheckBox,
+QGroupBox#optionsBox QLineEdit,
+QGroupBox#optionsBox QComboBox,
+QGroupBox#optionsBox QPushButton {{
+    font-size: 15px;
 }}
 
 QLabel {{
@@ -107,8 +122,31 @@ QGroupBox::title {{
     font-size: 11px;
 }}
 
+/* Per-section title colors + colored top-accent border (a "ribbon" on each card) */
+QGroupBox#optionsBox {{
+    border-top: 3px solid {COL_ACCENT_2};
+}}
+QGroupBox#optionsBox::title {{
+    color: {COL_ACCENT_2};   /* purple — option config */
+}}
+
+QGroupBox#queueBox {{
+    border-top: 3px solid {COL_ORANGE};
+}}
+QGroupBox#queueBox::title {{
+    color: {COL_ORANGE};     /* orange — pending queue */
+}}
+
+QGroupBox#downloadBox {{
+    border-top: 3px solid {COL_OK};
+}}
+QGroupBox#downloadBox::title {{
+    color: {COL_OK};         /* green — go */
+}}
+
 /* Inputs */
-QLineEdit, QTextEdit, QComboBox {{
+/* QTextEdit only — log view. Fluent now styles QLineEdit / QComboBox itself. */
+QTextEdit {{
     background-color: {COL_BG};
     border: 1px solid {COL_BORDER};
     border-radius: 6px;
@@ -118,28 +156,9 @@ QLineEdit, QTextEdit, QComboBox {{
     selection-color: {COL_BG};
 }}
 
-QLineEdit:focus, QTextEdit:focus, QComboBox:focus {{
+QTextEdit:focus {{
     border: 1px solid {COL_ACCENT};
     background-color: {COL_BG_SOFT};
-}}
-
-QLineEdit::placeholder {{
-    color: {COL_TEXT_MUTE};
-}}
-
-/* Hero input — used for the main search and URL fields */
-QLineEdit#heroInput {{
-    background-color: {COL_BG_LIST};
-    border: 1px solid {COL_BORDER};
-    border-radius: 10px;
-    padding: 6px 14px;
-    font-size: 13px;
-    color: {COL_TEXT};
-}}
-
-QLineEdit#heroInput:focus {{
-    border: 1px solid {COL_ACCENT};
-    background-color: {COL_BG};
 }}
 
 QTextEdit#logView {{
@@ -151,60 +170,8 @@ QTextEdit#logView {{
     padding: 8px 10px;
 }}
 
-/* ComboBox dropdown */
-QComboBox {{
-    padding-right: 26px;
-}}
-
-QComboBox::drop-down {{
-    subcontrol-origin: padding;
-    subcontrol-position: top right;
-    width: 22px;
-    border: none;
-    background: transparent;
-}}
-
-QComboBox::down-arrow {{
-    width: 14px;
-    height: 14px;
-}}
-
-QComboBox QAbstractItemView {{
-    background-color: {COL_BG_SOFT};
-    color: {COL_TEXT};
-    border: 1px solid {COL_BORDER};
-    selection-background-color: {COL_ACCENT};
-    selection-color: {COL_BG};
-    outline: 0;
-    padding: 4px;
-    font-size: 11px;
-}}
-
-/* Buttons */
-QPushButton {{
-    background-color: {COL_BG};
-    border: 1px solid {COL_BORDER_S};
-    border-radius: 6px;
-    padding: 5px 11px;
-    color: {COL_TEXT};
-    font-weight: 400;
-}}
-
-QPushButton:hover {{
-    background-color: {COL_BORDER};
-    border-color: {COL_ACCENT};
-    color: {COL_TEXT};
-}}
-
-QPushButton:pressed {{
-    background-color: {COL_BORDER_S};
-}}
-
-QPushButton:disabled {{
-    background-color: {COL_BG_SOFT};
-    color: {COL_TEXT_MUTE};
-    border-color: {COL_BORDER};
-}}
+/* Buttons — generic rules removed; Fluent widgets style themselves.
+   Object-name rules below still apply to our custom audio-player buttons. */
 
 /* Primary download button */
 QPushButton#downloadBtn {{
@@ -315,26 +282,11 @@ QListWidget::item:selected {{
     color: {COL_TEXT};
 }}
 
-/* Checkboxes & radios — high-contrast custom indicators */
-QCheckBox, QRadioButton {{
-    spacing: 5px;
-    color: {COL_TEXT};
-    background: transparent;
-    padding: 1px;
-    font-weight: 400;
-}}
-
-QCheckBox:disabled, QRadioButton:disabled {{
-    color: {COL_TEXT_MUTE};
-}}
-
-QCheckBox::indicator, QListWidget::indicator {{
+/* QListWidget item-row checkbox indicators (search results).
+   Fluent styles its own QCheckBox; only QListWidget keeps our look. */
+QListWidget::indicator {{
     width: 20px;
     height: 20px;
-}}
-
-/* Symmetric breathing room around the row checkbox in search results */
-QListWidget::indicator {{
     margin-left: 6px;
     margin-right: 14px;
 }}
@@ -353,7 +305,10 @@ QProgressBar {{
 QProgressBar::chunk {{
     background-color: qlineargradient(
         x1:0, y1:0, x2:1, y2:0,
-        stop:0 {COL_ACCENT_3}, stop:0.5 {COL_ACCENT}, stop:1 {COL_ACCENT_2}
+        stop:0     {COL_OK},
+        stop:0.33  {COL_ACCENT_3},
+        stop:0.66  {COL_ACCENT},
+        stop:1     {COL_DANGER}
     );
     border-radius: 7px;
     margin: 1px;
@@ -422,15 +377,20 @@ QToolTip {{
     border-radius: 4px;
 }}
 
-/* Accent strip (header underline) */
+/* Accent strip — full rainbow gradient for the bottom-edge ribbon */
 QFrame#accentStrip {{
     background: qlineargradient(
         x1:0, y1:0, x2:1, y2:0,
-        stop:0 {COL_ACCENT}, stop:0.5 {COL_ACCENT_2}, stop:1 {COL_ACCENT_3}
+        stop:0    {COL_OK},
+        stop:0.20 {COL_ACCENT_3},
+        stop:0.40 {COL_ACCENT},
+        stop:0.60 {COL_ACCENT_2},
+        stop:0.80 {COL_DANGER},
+        stop:1    {COL_WARN}
     );
     border: none;
-    min-height: 2px;
-    max-height: 2px;
+    min-height: 3px;
+    max-height: 3px;
     border-radius: 1px;
 }}
 
@@ -455,10 +415,9 @@ QListView::item, QAbstractItemView::item {{
 /* Loading indicator (centered text in results stack) */
 QLabel#loadingLabel {{
     color: {COL_ACCENT};
-    font-size: 18px;
-    font-weight: 700;
-    padding: 24px;
-    letter-spacing: 1px;
+    font-size: 16px;
+    font-weight: 500;
+    padding: 12px;
 }}
 
 /* Compact "browse" button next to the path field */
@@ -496,7 +455,7 @@ QPushButton#backBtn:hover {{
     color: {COL_ACCENT};
 }}
 
-/* Player slider + status/time labels */
+/* Player slider + status/time labels — horizontal (seek bar) */
 QSlider::groove:horizontal {{
     background: {COL_BORDER};
     height: 4px;
@@ -528,6 +487,38 @@ QSlider::add-page:horizontal {{
     margin: 0 4px;
 }}
 
+/* Vertical variant — same look, used by the volume slider. With
+   invertedAppearance(True), sub-page is the LOWER (filled) section. */
+QSlider::groove:vertical {{
+    background: {COL_BORDER};
+    width: 4px;
+    border-radius: 2px;
+    margin: 4px 0;
+}}
+QSlider::handle:vertical {{
+    background: {COL_ACCENT};
+    width: 14px;
+    height: 14px;
+    margin: 0 -6px;
+    border-radius: 7px;
+    border: 2px solid {COL_BG};
+}}
+QSlider::handle:vertical:hover {{
+    background: #89b4fa;
+}}
+/* Volume slider stays uncolored — both sub/add pages render the same neutral
+   track. Only the handle moves to indicate level. */
+QSlider::sub-page:vertical {{
+    background: {COL_BORDER};
+    border-radius: 2px;
+    margin: 4px 0;
+}}
+QSlider::add-page:vertical {{
+    background: {COL_BORDER};
+    border-radius: 2px;
+    margin: 4px 0;
+}}
+
 QLabel#playerStatus {{
     color: {COL_TEXT_DIM};
     padding: 2px 6px;
@@ -536,15 +527,22 @@ QLabel#playerStatus {{
 
 QLabel#playerTime {{
     color: {COL_TEXT_DIM};
-    padding: 2px 6px;
+    padding: 1px 2px;
     font-family: "Cascadia Mono", "Consolas", monospace;
-    font-size: 12px;
+    font-size: 14px;
+    font-weight: 600;
 }}
 
 /* === Compact audio-player bar (under the search results) === */
 QWidget#audioPlayerBar {{
-    background-color: {COL_BG_SOFT};
+    background: qlineargradient(
+        x1:0, y1:0, x2:1, y2:0,
+        stop:0    #1d2336,
+        stop:0.5  #25294a,
+        stop:1    #221f3a
+    );
     border: 1px solid {COL_BORDER};
+    border-top: 2px solid {COL_ACCENT_2};
     border-radius: 12px;
 }}
 
@@ -615,7 +613,7 @@ QListWidget::item:disabled {{
 /* Autoplay toggle inside the audio player bar */
 QCheckBox#autoplayCb {{
     color: {COL_TEXT_MUTE};
-    font-size: 12px;
+    font-size: 14px;
     font-weight: 600;
     spacing: 6px;
     padding: 2px 6px;
@@ -627,22 +625,33 @@ QCheckBox#autoplayCb:checked {{
     color: {COL_ACCENT_3};
 }}
 
-/* Splitter handle */
+/* Splitter handle — vertical multi-color ribbon between the panes */
 QSplitter::handle {{
     background: transparent;
 }}
 QSplitter::handle:horizontal {{
     width: 8px;
     background: qlineargradient(
-        x1:0, y1:0, x2:1, y2:0,
-        stop:0 transparent, stop:0.5 {COL_BORDER}, stop:1 transparent
+        x1:0, y1:0, x2:0, y2:1,
+        stop:0    transparent,
+        stop:0.15 {COL_OK},
+        stop:0.35 {COL_ACCENT_3},
+        stop:0.55 {COL_ACCENT_2},
+        stop:0.75 {COL_DANGER},
+        stop:1    transparent
     );
-    margin: 30px 0;
+    margin: 30px 2px;
+    border-radius: 4px;
 }}
 QSplitter::handle:hover {{
     background: qlineargradient(
-        x1:0, y1:0, x2:1, y2:0,
-        stop:0 transparent, stop:0.5 {COL_ACCENT}, stop:1 transparent
+        x1:0, y1:0, x2:0, y2:1,
+        stop:0    transparent,
+        stop:0.15 #b9f27c,
+        stop:0.35 #89dceb,
+        stop:0.55 #cba6f7,
+        stop:0.75 #ff8aa1,
+        stop:1    transparent
     );
 }}
 
@@ -656,10 +665,7 @@ QLabel#paneTitle {{
 
 QLabel#badge {{
     color: {COL_BG};
-    background: qlineargradient(
-        x1:0, y1:0, x2:1, y2:0,
-        stop:0 {COL_ACCENT_3}, stop:1 {COL_ACCENT}
-    );
+    background-color: {COL_ACCENT_3};   /* solid cyan — no gradient */
     border-radius: 9px;
     padding: 2px 10px;
     font-size: 11px;
@@ -674,6 +680,17 @@ QLabel#badgeMuted {{
     padding: 2px 10px;
     font-size: 11px;
     font-weight: 600;
+    min-width: 18px;
+}}
+
+/* Queue uses an orange badge to differentiate from cyan results badge */
+QLabel#queueBadge {{
+    color: {COL_BG};
+    background-color: {COL_ORANGE};   /* solid orange — no gradient */
+    border-radius: 9px;
+    padding: 2px 10px;
+    font-size: 11px;
+    font-weight: 800;
     min-width: 18px;
 }}
 
@@ -699,21 +716,41 @@ QLabel#titleGlyphPurple {{
     font-weight: 900;
     padding: 0 4px 0 2px;
 }}
+
+QLabel#titleGlyphOrange {{
+    color: {COL_ORANGE};
+    font-size: 14px;
+    font-weight: 900;
+    padding: 0 4px 0 2px;
+}}
+
+QLabel#titleGlyphGreen {{
+    color: {COL_OK};
+    font-size: 14px;
+    font-weight: 900;
+    padding: 0 4px 0 2px;
+}}
+
+QLabel#titleGlyphPink {{
+    color: {COL_DANGER};
+    font-size: 14px;
+    font-weight: 900;
+    padding: 0 4px 0 2px;
+}}
 """
 
 
 def build_qss(checkbox_paths: dict) -> str:
     """Return the full QSS with checkbox indicator images patched in.
 
-    `checkbox_paths` should provide forward-slash absolute paths under keys
-    'unchecked', 'checked', and (optionally) 'chevron_down'.
+    Only QListWidget item rows use our custom indicator now; QCheckBox is
+    rendered by Fluent's own widget paint code (with a built-in animation),
+    so we no longer try to override it via QSS image: url(...).
     """
     extra = f"""
-QCheckBox::indicator:unchecked,
 QListWidget::indicator:unchecked {{
     image: url("{checkbox_paths['unchecked']}");
 }}
-QCheckBox::indicator:checked,
 QListWidget::indicator:checked {{
     image: url("{checkbox_paths['checked']}");
 }}
@@ -726,5 +763,10 @@ QComboBox::down-arrow {{
     height: 14px;
 }}
 """
+    # NOTE: we previously tried to use a PNG as background-image on
+    # QGroupBox#downloadBox::title — Qt's QSS engine doesn't honor
+    # `background-position` reliably for the ::title sub-control, so the
+    # icon ended up visually centered. We now use a Unicode glyph in the
+    # title text instead (see _build_action_box).
     return DARK_QSS + extra
 

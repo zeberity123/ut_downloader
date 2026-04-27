@@ -23,6 +23,9 @@ python -m PyInstaller --noconfirm --onefile --windowed --clean ^
     --icon logo.ico ^
     --add-data "logo.ico;." ^
     --collect-submodules pytubefix ^
+    --collect-all qfluentwidgets ^
+    --collect-all qframelesswindow ^
+    --collect-all darkdetect ^
     %ADD_BIN% ^
     --exclude-module PyQt5.Qt3DAnimation ^
     --exclude-module PyQt5.Qt3DCore ^
@@ -60,7 +63,6 @@ python -m PyInstaller --noconfirm --onefile --windowed --clean ^
     --exclude-module PyQt5.QtWebEngineWidgets ^
     --exclude-module PyQt5.QtWebSockets ^
     --exclude-module PyQt5.QtX11Extras ^
-    --exclude-module PyQt5.QtXml ^
     --exclude-module PyQt5.QtXmlPatterns ^
     --exclude-module PyQtWebEngine ^
     --exclude-module tkinter ^

@@ -12,6 +12,61 @@ from pytubefix import YouTube, Search
 AUDIO_ITAG = 140  # m4a 128kbps — required by spec
 
 
+# YouTube has been increasingly bot-blocking the default `WEB` client.
+# These clients don't require a PO-token and tend to pass; we try them in
+# order until one resolves. Order matters: keep WEB first (best metadata)
+# and fall through to embed / mobile / TV variants for bot evasion.
+_YT_CLIENTS = ("WEB", "WEB_EMBED", "ANDROID_VR", "IOS", "TV_EMBED")
+
+
+def _is_bot_block(err: Exception) -> bool:
+    msg = str(err).lower()
+    return any(k in msg for k in ("bot", "detect", "po_token"))
+
+
+def _make_yt(url: str, on_progress_callback=None):
+    """Build a YouTube and force network resolution; fall through clients
+    on bot-detection until one succeeds. Raises the last error if all fail."""
+    last = None
+    for client in _YT_CLIENTS:
+        try:
+            kwargs = {"client": client}
+            if on_progress_callback is not None:
+                kwargs["on_progress_callback"] = on_progress_callback
+            yt = YouTube(url, **kwargs)
+            _ = yt.title          # force a network round-trip
+            return yt
+        except Exception as e:
+            last = e
+            if _is_bot_block(e):
+                continue
+            raise
+    raise last if last else RuntimeError("all YouTube clients failed")
+
+
+def _make_search(query: str, *, max_results: int = 25):
+    """Same fall-through logic for `Search`. Verifies the videos list is
+    actually non-empty before returning — when YouTube silently throttles
+    a client it sometimes returns zero results (no exception, just nothing),
+    so we treat empty as "try the next client" rather than reporting a
+    false "0 found" to the user."""
+    last = None
+    for client in _YT_CLIENTS:
+        try:
+            s = Search(query, client=client)
+            videos = list(s.videos)[:max_results]
+            if videos:                    # got real results — accept
+                return s
+            # silent-throttle / hidden bot-block — try next client
+            last = RuntimeError(f"empty results from client={client}")
+        except Exception as e:
+            last = e
+            if _is_bot_block(e):
+                continue
+            raise
+    raise last if last else RuntimeError("all Search clients failed or empty")
+
+
 def sanitize_filename(name: str) -> str:
     name = re.sub(r'[\\/:*?"<>|]+', '_', name)
     name = re.sub(r'\s+', ' ', name).strip()
@@ -69,7 +124,7 @@ class SearchWorker(QThread):
 
     def run(self):
         try:
-            s = Search(self.query)
+            s = _make_search(self.query, max_results=self.initial_count)
             videos = list(s.videos)[:self.initial_count]
             results = []
             for v in videos:
@@ -145,7 +200,7 @@ class AudioDownloadWorker(QThread):
             if os.path.isfile(cached) and os.path.getsize(cached) > 0:
                 self.file_ready.emit(self.video_id, cached)
                 return
-            yt = YouTube(self.video_url)
+            yt = _make_yt(self.video_url)
             stream = yt.streams.get_by_itag(AUDIO_ITAG)
             if stream is None:
                 self.error.emit(self.video_id, "오디오 스트림을 찾을 수 없습니다")
@@ -186,7 +241,7 @@ class FetchInfoWorker(QThread):
 
     def run(self):
         try:
-            yt = YouTube(self.url)
+            yt = _make_yt(self.url)
             self.finished_info.emit({
                 'title': yt.title,
                 'author': yt.author or '',
@@ -347,7 +402,7 @@ class DownloadWorker(QThread):
     # ------------------------------------------------------------------
     def _download_mp3(self, item, ff: str, batch_index: int) -> str:
         cb = self._make_progress_cb("오디오")
-        yt = YouTube(item['url'], on_progress_callback=cb)
+        yt = _make_yt(item['url'], on_progress_callback=cb)
         stream = yt.streams.get_by_itag(AUDIO_ITAG)
         if stream is None:
             raise RuntimeError("이 영상의 오디오 스트림을 사용할 수 없습니다")
@@ -380,7 +435,7 @@ class DownloadWorker(QThread):
 
     def _download_video(self, item, ff: str, batch_index: int) -> str:
         cb = self._make_progress_cb("비디오")
-        yt = YouTube(item['url'], on_progress_callback=cb)
+        yt = _make_yt(item['url'], on_progress_callback=cb)
 
         # progressive=False + mp4, video-only (DASH)
         v_streams = list(yt.streams.filter(progressive=False, file_extension='mp4',

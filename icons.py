@@ -162,6 +162,42 @@ def download_icon(size: int = 22, color: str = "#16161e") -> QIcon:
     return QIcon(_render_download_icon(size, color))
 
 
+def _render_folder_icon(size: int, color: str) -> QPixmap:
+    """Outlined folder glyph — rectangular body with a small tab on top-left."""
+    pix = QPixmap(size, size)
+    pix.fill(QColor(0, 0, 0, 0))
+    p = QPainter(pix)
+    p.setRenderHint(QPainter.Antialiasing)
+
+    s = float(size)
+    pen = QPen(QColor(color))
+    pen.setWidthF(max(2.0, s * 0.09))
+    pen.setCapStyle(Qt.RoundCap)
+    pen.setJoinStyle(Qt.RoundJoin)
+    p.setPen(pen)
+    p.setBrush(Qt.NoBrush)
+
+    # Single closed polyline: body + tab notch on the top-left.
+    poly = QPolygonF([
+        QPointF(s * 0.12, s * 0.78),   # bottom-left
+        QPointF(s * 0.12, s * 0.30),   # top-left of body
+        QPointF(s * 0.20, s * 0.30),
+        QPointF(s * 0.20, s * 0.20),   # tab top-left
+        QPointF(s * 0.46, s * 0.20),   # tab top-right
+        QPointF(s * 0.46, s * 0.30),
+        QPointF(s * 0.88, s * 0.30),   # top-right of body
+        QPointF(s * 0.88, s * 0.78),   # bottom-right
+        QPointF(s * 0.12, s * 0.78),   # close
+    ])
+    p.drawPolyline(poly)
+    p.end()
+    return pix
+
+
+def folder_icon(size: int = 22, color: str = "#bb9af7") -> QIcon:
+    return QIcon(_render_folder_icon(size, color))
+
+
 def ensure_checkbox_icons() -> dict:
     """Write PNG icons to a temp folder and return their absolute paths.
 

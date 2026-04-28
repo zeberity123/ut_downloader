@@ -4,6 +4,29 @@ All notable changes to **ut_download (유튜브 다운로더 by Daru)** are reco
 This project follows a loose form of [Keep a Changelog][keep-a-changelog]; date
 format is `YYYY-MM-DD`.
 
+## v1.3 — 2026-04-28
+
+### Added
+- **Multi-client fallback** for both video info fetch and search.
+  YouTube's bot-detection scores requests using the query string and
+  the InnerTube client; some Korean queries (e.g. `인기동요 모음`)
+  triggered the WEB client's bot heuristic in v1.2 and silently
+  returned zero results. v1.3 cycles through `WEB → WEB_EMBED →
+  ANDROID_VR → IOS → TV_EMBED` automatically — both on bot-detection
+  exceptions and on empty-result responses — until one client passes.
+  - `_make_yt(url, on_progress_callback=...)` for `YouTube(...)` calls.
+  - `_make_search(query, max_results=N)` for `Search(...)` calls.
+
+### Changed
+- **pytubefix `>=10.4.0`** required (was `>=8.0.0`).
+- All five `YouTube(...)` / `Search(...)` call-sites in
+  `downloader.py` (`SearchWorker`, `LoadMoreWorker`,
+  `FetchInfoWorker`, `DownloadWorker`, `AudioDownloadWorker`) routed
+  through the helpers.
+
+### Build
+- ffmpeg.exe still bundled inside the onefile build.
+
 ## v1.2 — 2026-04-28
 
 ### Added

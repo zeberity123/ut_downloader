@@ -575,6 +575,57 @@ class DownloadWorker(QThread):
         self.finished_all.emit()
 
     # ------------------------------------------------------------------
+    def _ffmpeg_with_progress(self, cmd, total_seconds: int, item_idx: int,
+                              *, start_pct: int, end_pct: int):
+        """Run an ffmpeg command and surface its progress on the item bar.
+
+        Inserts `-progress pipe:1 -nostats` so ffmpeg writes machine-
+        parseable key=value lines on stdout; we read them line by line,
+        watch for `out_time_us=`, and map elapsed-encode-seconds onto the
+        `[start_pct, end_pct]` slice of the current item slot.
+
+        Returns `(returncode, stderr_bytes)` — same shape as the previous
+        `subprocess.run(... capture_output=True)` callers were getting.
+        """
+        full_cmd = [cmd[0], '-progress', 'pipe:1', '-nostats'] + cmd[1:]
+        p = subprocess.Popen(
+            full_cmd,
+            stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+            text=True, encoding='utf-8', errors='ignore',
+            bufsize=1,
+            **_no_window_kwargs(),
+        )
+        span = end_pct - start_pct
+        last_emitted = start_pct - 1
+        try:
+            for line in p.stdout:
+                if self._cancelled:
+                    p.terminate()
+                    break
+                line = line.strip()
+                if not line.startswith('out_time_us='):
+                    continue
+                try:
+                    us = int(line.split('=', 1)[1])
+                except ValueError:
+                    continue
+                if total_seconds <= 0 or us < 0:
+                    continue
+                frac = us / 1_000_000 / total_seconds
+                if frac > 1.0:
+                    frac = 1.0
+                pct = start_pct + int(frac * span)
+                if pct > last_emitted:
+                    last_emitted = pct
+                    self.progress.emit(item_idx, pct)
+        finally:
+            try:
+                stderr = (p.stderr.read() or "") if p.stderr else ""
+            except Exception:
+                stderr = ""
+            p.wait()
+        return p.returncode, stderr.encode('utf-8', errors='ignore')
+
     def _make_progress_hook(self, label: str, item_idx: int,
                             dl_max_pct: int = None):
         """yt-dlp progress hook that drives both the text log AND the
@@ -689,17 +740,23 @@ class DownloadWorker(QThread):
                '-i', audio_path,
                '-vn', '-acodec', 'libmp3lame', '-b:a', '192k',
                out_path]
+        duration = int(item.get('length') or 0)
         try:
-            r = subprocess.run(cmd, capture_output=True, **_no_window_kwargs())
+            rc, stderr = self._ffmpeg_with_progress(
+                cmd, duration, batch_index,
+                start_pct=self._DL_MAX_PCT, end_pct=100,
+            )
         finally:
             try:
                 os.remove(audio_path)
             except OSError:
                 pass
-        if r.returncode != 0:
-            err = r.stderr.decode('utf-8', errors='ignore')[:400]
+        if rc != 0:
+            err = stderr.decode('utf-8', errors='ignore')[:400]
             raise RuntimeError(f"ffmpeg 실패: {err}")
-        # post-processing complete → fill the rest of the item slot
+        # Belt-and-braces: ffmpeg's out_time_us can stop just shy of total
+        # duration on some inputs (silence at the end, frame-aligned cut),
+        # so explicitly land the bar on 100 % when the process exits clean.
         self.progress.emit(batch_index, 100)
         return out_path
 

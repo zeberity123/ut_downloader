@@ -4,6 +4,20 @@ All notable changes to **ut_download (유튜브 다운로더 by Daru)** are reco
 This project follows a loose form of [Keep a Changelog][keep-a-changelog]; date
 format is `YYYY-MM-DD`.
 
+## v1.4.6 — 2026-04-29
+
+### Changed
+- **Progress bar advances during the MP3 encode phase too.** v1.4.4
+  reserved the 90–100 % slice for "post-processing" but didn't actually
+  watch ffmpeg, so on long audio (e.g. a 2-hour album where the encode
+  takes ~80 s on its own) the bar sat frozen at 90 % for the entire
+  transcode. New `_ffmpeg_with_progress` helper invokes ffmpeg with
+  `-progress pipe:1 -nostats`, parses the `out_time_us=` lines as they
+  stream in, and maps elapsed-encode-seconds onto the 90→100 % slice
+  using `item['length']` as the denominator. ffmpeg writes a progress
+  block roughly every half-second, so the bar advances smoothly through
+  the entire transcode.
+
 ## v1.4.5 — 2026-04-29
 
 ### Changed

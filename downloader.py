@@ -22,7 +22,10 @@ import yt_dlp
 # the audio-preview cache key stable, and the MP3 transcode chain unchanged.
 # Fallback chain on itag 140 → bestaudio[ext=m4a] → bestaudio handles
 # Music-Premium-locked tracks where 140 isn't published to non-auth clients.
-AUDIO_FORMAT = "140/bestaudio[ext=m4a]/bestaudio"
+# Final `best` fallback covers DRM/Premium-locked albums where no audio-only
+# stream is published at all — yt-dlp picks the combined mp4 (e.g. itag 18)
+# and our ffmpeg `-vn` transcode strips the video track during MP3 conversion.
+AUDIO_FORMAT = "140/bestaudio[ext=m4a]/bestaudio/best"
 
 # yt-dlp tries clients in order; the first one that successfully extracts
 # wins, so `default` stays first to keep the common-case fast. The rest
@@ -586,25 +589,45 @@ class DownloadWorker(QThread):
             n += 1
 
     @staticmethod
-    def _video_format(target: str) -> str:
-        """Map the UI's resolution selector to a yt-dlp format string."""
-        if target == 'Highest':
-            return "bestvideo[ext=mp4]/bestvideo"
-        if target == 'Lowest':
-            return "worstvideo[ext=mp4]/worstvideo"
+    def _height_filter(target: str) -> str:
+        """Return a `[height<=N]` clause (or empty for Highest/Lowest)."""
+        if target in ('Highest', 'Lowest'):
+            return ""
         m = re.search(r'(\d+)', target)
         h = int(m.group(1)) if m else 720
-        return (f"bestvideo[ext=mp4][height<={h}]/"
-                f"bestvideo[height<={h}]/bestvideo")
+        return f"[height<={h}]"
+
+    @staticmethod
+    def _merged_format(target: str) -> str:
+        """Format string for video + audio download.
+
+        yt-dlp parses `/` and `+` as: `+` binds tighter than `/`, and the
+        list of `/`-separated alternates is tried left to right. So we
+        list each alternate as a complete `video+audio` (or combined-best)
+        spec — never `bestvideo` alone, since that's video-only and would
+        win the alternation, producing a silent video file.
+        """
+        if target == 'Lowest':
+            return ("worstvideo[ext=mp4]+worstaudio[ext=m4a]/"
+                    "worstvideo[ext=mp4]+worstaudio/"
+                    "worstvideo+worstaudio/"
+                    "worst[ext=mp4]/worst")
+        h = DownloadWorker._height_filter(target)
+        return (f"bestvideo[ext=mp4]{h}+140/"
+                f"bestvideo[ext=mp4]{h}+bestaudio[ext=m4a]/"
+                f"bestvideo{h}+bestaudio/"
+                f"best[ext=mp4]{h}/best{h}/best")
 
     @staticmethod
     def _video_only_format(target: str) -> str:
-        """Same as `_video_format` but with combined-stream fallbacks for
-        locked content (Music Premium, DRM, age-gated, etc.) where a pure
-        video-only stream isn't published."""
-        base = DownloadWorker._video_format(target)
-        # Fall through to single-file combined formats if no DASH video.
-        return f"{base}/best[ext=mp4]/best"
+        """Format string for the "video only (no audio)" toggle.
+        Combined-stream fallback for locked content where a pure
+        video-only DASH stream isn't published."""
+        if target == 'Lowest':
+            return "worstvideo[ext=mp4]/worstvideo/worst[ext=mp4]/worst"
+        h = DownloadWorker._height_filter(target)
+        return (f"bestvideo[ext=mp4]{h}/bestvideo{h}/"
+                f"best[ext=mp4]{h}/best{h}/best")
 
     # ------------------------------------------------------------------
     def _download_mp3(self, item, ff: str, ff_dir, batch_index: int) -> str:
@@ -642,7 +665,7 @@ class DownloadWorker(QThread):
         dest = self.options['dest']
         os.makedirs(dest, exist_ok=True)
         base = self._output_basename(item, batch_index)
-        v_filter = self._video_format(self.options.get('resolution', 'Highest'))
+        target = self.options.get('resolution', 'Highest')
 
         if not self.options.get('include_audio', True):
             # video-only (with combined-stream fallback for locked content)
@@ -651,7 +674,7 @@ class DownloadWorker(QThread):
             self.log.emit("    비디오 다운로드 중…")
             v_path = _ydl_download(
                 item['url'],
-                fmt=self._video_only_format(self.options.get('resolution', 'Highest')),
+                fmt=self._video_only_format(target),
                 outtmpl=tmpl,
                 ffmpeg_loc=ff_dir,
                 progress_hook=self._make_progress_hook("비디오"),
@@ -667,7 +690,7 @@ class DownloadWorker(QThread):
         # video + audio merge — yt-dlp does it inline when given ffmpeg.
         out_path = self._unique_path(dest, base, 'mp4')
         tmpl = os.path.join(dest, f"_tmp_va_{batch_index}_{os.getpid()}.%(ext)s")
-        fmt = f"{v_filter}+{AUDIO_FORMAT}/best[ext=mp4]/best"
+        fmt = self._merged_format(target)
         self.log.emit("    비디오 + 오디오 다운로드 + 병합 중…")
         merged = _ydl_download(
             item['url'], fmt=fmt, outtmpl=tmpl,

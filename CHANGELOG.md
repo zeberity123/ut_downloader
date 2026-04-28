@@ -4,6 +4,26 @@ All notable changes to **ut_download (유튜브 다운로더 by Daru)** are reco
 This project follows a loose form of [Keep a Changelog][keep-a-changelog]; date
 format is `YYYY-MM-DD`.
 
+## v1.4.3 — 2026-04-29
+
+### Fixed
+- **Video+audio downloads were silent** — the merged-format string
+  `{v_filter}+{AUDIO_FORMAT}/best[ext=mp4]/best` parsed wrong:
+  yt-dlp binds `+` tighter than `/`, so for `Highest` it expanded to
+  alternates `bestvideo[ext=mp4]` / `bestvideo+140` / `bestaudio[ext=m4a]`
+  / `bestaudio` / `best[ext=mp4]` / `best`. Alternative #1 is video-only
+  and won the alternation, producing `.mp4` files with no audio track.
+  Replaced with `_merged_format(target)` that lists each alternate as a
+  complete `video+audio` (or combined-best) spec — never `bestvideo`
+  alone.
+- **MP3 download failed on Music-Premium-locked tracks** with
+  `Requested format is not available` (e.g.
+  `https://youtu.be/LXkET__T_2M`). `AUDIO_FORMAT` now ends with `/best`
+  so yt-dlp falls through to the combined mp4 (e.g. itag 18) when no
+  audio-only stream is published; ffmpeg's `-vn` then strips the video
+  track during MP3 transcode. Quality drops to whatever AAC the combined
+  format ships with (typically ~96 kbps), but the download succeeds.
+
 ## v1.4.2 — 2026-04-28
 
 ### Fixed

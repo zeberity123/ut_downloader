@@ -4,6 +4,26 @@ All notable changes to **ut_download (유튜브 다운로더 by Daru)** are reco
 This project follows a loose form of [Keep a Changelog][keep-a-changelog]; date
 format is `YYYY-MM-DD`.
 
+## v1.4.4 — 2026-04-29
+
+### Changed
+- **Progress bar tracks the whole pipeline, not just the download.**
+  Previously the bar filled to 100 % the moment yt-dlp finished writing
+  the .m4a — the MP3 transcode (which can take a minute on long audio
+  like a 2-hour album) ran with the bar already full. Now the
+  `DownloadWorker.progress` signal carries `(items_completed,
+  pct_in_current_item)`; each item gets a 100-unit slot on the bar:
+  - **MP3 download**: yt-dlp covers 0–90 %, ffmpeg transcode fills 90–100 %.
+  - **Video + audio (merged)**: yt-dlp's download + inline merge covers
+    0–90 %, the rename pass fills 90–100 %.
+  - **Video only**: yt-dlp covers the full 0–100 %.
+  Bar range is now `total_items * 100`.
+- **`0/N` counter only advances when an item is fully finished**
+  (download + transcode + rename), not when an item starts. Matches the
+  user expectation that the count reflects "how many are done" rather
+  than "how many have been picked up." Failed items still advance the
+  counter — failure is also a terminal state.
+
 ## v1.4.3 — 2026-04-29
 
 ### Fixed

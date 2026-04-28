@@ -512,10 +512,28 @@ class AudioDownloadWorker(QThread):
 
 
 class DownloadWorker(QThread):
+    """Download queue worker.
+
+    `progress` signal semantics: `(items_completed, pct_in_current_item)`.
+      - `items_completed` only increments when an item is fully done
+        (download + transcode + rename), so the counter under the bar
+        reads `0/N → 1/N → … → N/N`.
+      - `pct_in_current_item` is 0–100 within the current item's slot.
+        The yt-dlp download covers 0–`_DL_MAX_PCT`; the post-processing
+        (ffmpeg transcode, rename) takes the remainder. The bar finishing
+        early when the .m4a finished but the MP3 transcode still ran
+        was the v1.4.3 user complaint.
+    """
     log = pyqtSignal(str)
-    progress = pyqtSignal(int, int)        # current_index, total_items
+    progress = pyqtSignal(int, int)        # items_completed, pct_in_current
     item_done = pyqtSignal(int, bool, str)  # index_in_batch, ok, message
     finished_all = pyqtSignal()
+
+    # How much of one item's progress slot the yt-dlp download phase
+    # represents — the rest is reserved for post-processing (mp3 transcode,
+    # ffmpeg merge for video+audio). 90 means: download fills 0–90 %,
+    # then post-processing fills 90–100 %.
+    _DL_MAX_PCT = 90
 
     def __init__(self, items, options):
         super().__init__()
@@ -530,11 +548,14 @@ class DownloadWorker(QThread):
         ff = find_ffmpeg()
         ff_dir = os.path.dirname(ff) if os.path.isfile(ff) else None
         total = len(self.items)
+        # Reset to 0/N at the start so the bar doesn't jump to 100 % for
+        # single-item downloads on the very first emit.
+        self.progress.emit(0, 0)
         for i, item in enumerate(self.items):
             if self._cancelled:
                 self.log.emit("취소되었습니다.")
                 break
-            self.progress.emit(i + 1, total)
+            self.progress.emit(i, 0)              # i items done so far, starting i+1
             title = item.get('title', item['url'])
             self.log.emit(f"[{i+1}/{total}] {title}")
             try:
@@ -548,23 +569,42 @@ class DownloadWorker(QThread):
                 msg = f"{type(e).__name__}: {e}"
                 self.log.emit(f"  ✘ 오류: {msg}")
                 self.item_done.emit(i, False, msg)
+            # advance the counter regardless of success — a failed item is
+            # still "done" from the user's perspective.
+            self.progress.emit(i + 1, 0)
         self.finished_all.emit()
 
     # ------------------------------------------------------------------
-    def _make_progress_hook(self, label: str):
-        last = [-10]
+    def _make_progress_hook(self, label: str, item_idx: int,
+                            dl_max_pct: int = None):
+        """yt-dlp progress hook that drives both the text log AND the
+        item progress bar slot. Caps the bar at `dl_max_pct` so the
+        post-processing phase can finish the remaining slice."""
+        if dl_max_pct is None:
+            dl_max_pct = self._DL_MAX_PCT
+        last_pct = [-10]
 
         def hook(d):
-            if d.get('status') != 'downloading':
-                return
-            total = d.get('total_bytes') or d.get('total_bytes_estimate') or 0
-            if not total:
-                return
-            done = d.get('downloaded_bytes') or 0
-            pct = int(done * 100 / total)
-            if pct >= last[0] + 10:
-                last[0] = pct
-                self.log.emit(f"    {label} {pct}%")
+            status = d.get('status')
+            if status == 'downloading':
+                total = d.get('total_bytes') or d.get('total_bytes_estimate') or 0
+                if not total:
+                    return
+                done = d.get('downloaded_bytes') or 0
+                pct_dl = int(done * 100 / total)
+                if pct_dl > 100:
+                    pct_dl = 100
+                bar_pct = pct_dl * dl_max_pct // 100
+                self.progress.emit(item_idx, bar_pct)
+                if pct_dl >= last_pct[0] + 10:
+                    last_pct[0] = pct_dl
+                    self.log.emit(f"    {label} {pct_dl}%")
+            elif status == 'finished':
+                # Hold at dl_max_pct until the post-processing phase finishes.
+                # Reset the log throttle so the next format (in a 2-stream
+                # merge) starts logging from 10 % again.
+                last_pct[0] = -10
+                self.progress.emit(item_idx, dl_max_pct)
         return hook
 
     def _output_basename(self, item, batch_index: int) -> str:
@@ -641,7 +681,7 @@ class DownloadWorker(QThread):
         m4a_path = _ydl_download(
             item['url'], fmt=AUDIO_FORMAT, outtmpl=tmpl,
             ffmpeg_loc=ff_dir,
-            progress_hook=self._make_progress_hook("오디오"),
+            progress_hook=self._make_progress_hook("오디오", batch_index),
         )
 
         self.log.emit("    MP3로 인코딩 중…")
@@ -659,6 +699,8 @@ class DownloadWorker(QThread):
         if r.returncode != 0:
             err = r.stderr.decode('utf-8', errors='ignore')[:400]
             raise RuntimeError(f"ffmpeg 실패: {err}")
+        # post-processing complete → fill the rest of the item slot
+        self.progress.emit(batch_index, 100)
         return out_path
 
     def _download_video(self, item, ff: str, ff_dir, batch_index: int) -> str:
@@ -668,7 +710,8 @@ class DownloadWorker(QThread):
         target = self.options.get('resolution', 'Highest')
 
         if not self.options.get('include_audio', True):
-            # video-only (with combined-stream fallback for locked content)
+            # video-only (with combined-stream fallback for locked content).
+            # No post-processing → the download phase fills the whole slot.
             out_path = self._unique_path(dest, base + ' (영상만)', 'mp4')
             tmpl = os.path.join(dest, f"_tmp_v_{batch_index}_{os.getpid()}.%(ext)s")
             self.log.emit("    비디오 다운로드 중…")
@@ -677,7 +720,8 @@ class DownloadWorker(QThread):
                 fmt=self._video_only_format(target),
                 outtmpl=tmpl,
                 ffmpeg_loc=ff_dir,
-                progress_hook=self._make_progress_hook("비디오"),
+                progress_hook=self._make_progress_hook("비디오", batch_index,
+                                                       dl_max_pct=100),
             )
             try:
                 if os.path.exists(out_path):
@@ -685,9 +729,12 @@ class DownloadWorker(QThread):
                 os.rename(v_path, out_path)
             except OSError as e:
                 raise RuntimeError(f"파일명 변경 실패: {e}")
+            self.progress.emit(batch_index, 100)
             return out_path
 
-        # video + audio merge — yt-dlp does it inline when given ffmpeg.
+        # video + audio merge — yt-dlp does the merge inline when given
+        # ffmpeg, and emits 'finished' after the merge step too. Reserve the
+        # last 10 % for the rename pass below.
         out_path = self._unique_path(dest, base, 'mp4')
         tmpl = os.path.join(dest, f"_tmp_va_{batch_index}_{os.getpid()}.%(ext)s")
         fmt = self._merged_format(target)
@@ -695,7 +742,7 @@ class DownloadWorker(QThread):
         merged = _ydl_download(
             item['url'], fmt=fmt, outtmpl=tmpl,
             ffmpeg_loc=ff_dir, merge_format='mp4',
-            progress_hook=self._make_progress_hook("비디오"),
+            progress_hook=self._make_progress_hook("비디오", batch_index),
         )
         try:
             if os.path.exists(out_path):
@@ -703,4 +750,5 @@ class DownloadWorker(QThread):
             os.rename(merged, out_path)
         except OSError as e:
             raise RuntimeError(f"파일명 변경 실패: {e}")
+        self.progress.emit(batch_index, 100)
         return out_path

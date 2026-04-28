@@ -48,7 +48,7 @@ from icons import player_icon, download_icon, folder_icon
 from theme import build_qss
 from icons import ensure_checkbox_icons
 
-__version__ = "1.4.3"
+__version__ = "1.4.4"
 APP_TITLE = f"유튜브 다운로더 by Daru  v{__version__}"
 DEFAULT_DEST = str(Path.home() / "Downloads")
 
@@ -1975,7 +1975,12 @@ class MainWindow(QMainWindow):
         }
 
         self.log(f"=== {len(items)}개 다운로드 시작 → {dest} ===")
-        self.progress_bar.setRange(0, len(items))
+        # Each item contributes a 100-unit slot to the bar — gives us
+        # smooth per-item progress (0–90 % download, 90–100 % post-process)
+        # AND a "completed/total" counter that only ticks when an item is
+        # fully done.
+        self._dl_total = len(items)
+        self.progress_bar.setRange(0, len(items) * 100)
         self.progress_bar.setValue(0)
         self.progress_caption.setText(f"0 / {len(items)}")
 
@@ -1990,10 +1995,14 @@ class MainWindow(QMainWindow):
         mapping = {"최고 화질": "Highest", "최저 화질": "Lowest"}
         return mapping.get(self.res_combo.currentText(), self.res_combo.currentText())
 
-    def _on_dl_progress(self, current: int, total: int):
-        self.progress_bar.setRange(0, total)
-        self.progress_bar.setValue(current)
-        self.progress_caption.setText(f"{current} / {total}")
+    def _on_dl_progress(self, items_completed: int, pct_in_current: int):
+        """Maps DownloadWorker's `(items_completed, pct_in_current 0-100)`
+        signal onto the progress bar. The bar's range was set to
+        `total * 100` at start, so we read `items_completed * 100 +
+        pct_in_current` directly. Counter shows completed-vs-total."""
+        total = getattr(self, '_dl_total', 0) or 1
+        self.progress_bar.setValue(items_completed * 100 + pct_in_current)
+        self.progress_caption.setText(f"{items_completed} / {total}")
 
     def _on_dl_finished(self):
         self.log("=== 모든 다운로드 완료 ===")

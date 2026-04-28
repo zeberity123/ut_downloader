@@ -4,6 +4,25 @@ All notable changes to **ut_download (유튜브 다운로더 by Daru)** are reco
 This project follows a loose form of [Keep a Changelog][keep-a-changelog]; date
 format is `YYYY-MM-DD`.
 
+## v1.4.2 — 2026-04-28
+
+### Fixed
+- **`URL 추가` failed with `This video is not available`** for some
+  videos that worked under the v1.3 pytubefix backend (e.g.
+  `https://youtu.be/LXkET__T_2M`). The v1.4 yt-dlp swap dropped the
+  multi-client cycle the pytubefix code had — yt-dlp's default `web`
+  client is blocked on Music-Premium-locked, age-gated, and DRM tracks.
+  Restored the fallback chain via `extractor_args.youtube.player_client
+  = ['default', 'android', 'ios', 'tv_embedded', 'web_embedded',
+  'mweb']`. yt-dlp tries clients in order and short-circuits on the
+  first success, so normal URLs and search are unaffected.
+- **Audio format fallback**: `AUDIO_FORMAT` now resolves to
+  `140 / bestaudio[ext=m4a] / bestaudio` so MP3 downloads still
+  succeed when itag 140 isn't published to non-auth clients.
+- **Video-only fallback**: when no DASH video stream is available
+  (locked content), fall through to combined `best[ext=mp4] / best`
+  formats instead of failing outright.
+
 ## v1.4.1 — 2026-04-28
 
 ### Fixed

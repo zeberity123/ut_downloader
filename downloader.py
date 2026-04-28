@@ -20,7 +20,23 @@ import yt_dlp
 
 # itag 140 = m4a/AAC 128 kbps. Same audio spec as v1.0–v1.3 builds — keeps
 # the audio-preview cache key stable, and the MP3 transcode chain unchanged.
-AUDIO_FORMAT = "140"
+# Fallback chain on itag 140 → bestaudio[ext=m4a] → bestaudio handles
+# Music-Premium-locked tracks where 140 isn't published to non-auth clients.
+AUDIO_FORMAT = "140/bestaudio[ext=m4a]/bestaudio"
+
+# yt-dlp tries clients in order; the first one that successfully extracts
+# wins, so `default` stays first to keep the common-case fast. The rest
+# are fallbacks for: bot detection (`ios`), age gate (`tv_embedded`), embed
+# restrictions (`web_embedded`), and Music-Premium / DRM-style locks where
+# the `web` client is blocked but `android` still extracts (`android`).
+# Mirrors the role of v1.3's pytubefix client cycle.
+_YT_PLAYER_CLIENTS = [
+    'default', 'android', 'ios', 'tv_embedded', 'web_embedded', 'mweb',
+]
+
+
+def _yt_extractor_args() -> dict:
+    return {'youtube': {'player_client': list(_YT_PLAYER_CLIENTS)}}
 
 
 # ----------------------------------------------------------------- yt-dlp opts
@@ -33,6 +49,7 @@ def _ydl_search_opts() -> dict:
         'skip_download': True,
         'noplaylist': True,
         'socket_timeout': 12,
+        'extractor_args': _yt_extractor_args(),
     }
 
 
@@ -44,6 +61,7 @@ def _ydl_info_opts() -> dict:
         'skip_download': True,
         'noplaylist': True,
         'socket_timeout': 15,
+        'extractor_args': _yt_extractor_args(),
     }
 
 
@@ -242,6 +260,7 @@ def _ydl_download(url: str, *, fmt: str, outtmpl: str, ffmpeg_loc: str = None,
         'overwrites': True,
         'continuedl': False,
         'progress_hooks': hooks,
+        'extractor_args': _yt_extractor_args(),
     }
     if ffmpeg_loc:
         opts['ffmpeg_location'] = ffmpeg_loc
@@ -578,6 +597,15 @@ class DownloadWorker(QThread):
         return (f"bestvideo[ext=mp4][height<={h}]/"
                 f"bestvideo[height<={h}]/bestvideo")
 
+    @staticmethod
+    def _video_only_format(target: str) -> str:
+        """Same as `_video_format` but with combined-stream fallbacks for
+        locked content (Music Premium, DRM, age-gated, etc.) where a pure
+        video-only stream isn't published."""
+        base = DownloadWorker._video_format(target)
+        # Fall through to single-file combined formats if no DASH video.
+        return f"{base}/best[ext=mp4]/best"
+
     # ------------------------------------------------------------------
     def _download_mp3(self, item, ff: str, ff_dir, batch_index: int) -> str:
         dest = self.options['dest']
@@ -617,12 +645,14 @@ class DownloadWorker(QThread):
         v_filter = self._video_format(self.options.get('resolution', 'Highest'))
 
         if not self.options.get('include_audio', True):
-            # video-only
+            # video-only (with combined-stream fallback for locked content)
             out_path = self._unique_path(dest, base + ' (영상만)', 'mp4')
             tmpl = os.path.join(dest, f"_tmp_v_{batch_index}_{os.getpid()}.%(ext)s")
             self.log.emit("    비디오 다운로드 중…")
             v_path = _ydl_download(
-                item['url'], fmt=v_filter, outtmpl=tmpl,
+                item['url'],
+                fmt=self._video_only_format(self.options.get('resolution', 'Highest')),
+                outtmpl=tmpl,
                 ffmpeg_loc=ff_dir,
                 progress_hook=self._make_progress_hook("비디오"),
             )

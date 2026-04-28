@@ -4,6 +4,17 @@ All notable changes to **ut_download (유튜브 다운로더 by Daru)** are reco
 This project follows a loose form of [Keep a Changelog][keep-a-changelog]; date
 format is `YYYY-MM-DD`.
 
+## v1.4.7 — 2026-04-29
+
+### Changed
+- **MP3 progress slot rebalanced 40 % download / 60 % encode** (was
+  90 / 10). For long audio the libmp3lame transcode dominates the
+  wall-clock time — user reported ~30 s download vs. ~80 s encode for
+  a 2-hour album — so the bar's visual rate now better matches actual
+  time consumed. Video+audio merge stays at 90 / 10 since yt-dlp's
+  inline ffmpeg merge is fast (stream copy, no re-encode); video-only
+  stays at 100 / 0 since there's no post-processing.
+
 ## v1.4.6 — 2026-04-29
 
 ### Changed

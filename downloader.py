@@ -530,10 +530,18 @@ class DownloadWorker(QThread):
     finished_all = pyqtSignal()
 
     # How much of one item's progress slot the yt-dlp download phase
-    # represents — the rest is reserved for post-processing (mp3 transcode,
-    # ffmpeg merge for video+audio). 90 means: download fills 0–90 %,
-    # then post-processing fills 90–100 %.
+    # represents — the rest is reserved for post-processing.
+    #
+    # `_DL_MAX_PCT` is the default for paths whose post-processing is fast
+    # (video+audio merge = stream copy, video-only = rename). The download
+    # itself dominates the time, so 90 % feels right.
+    #
+    # `_MP3_DL_PCT` overrides for the MP3 path: a long m4a/Opus download is
+    # quick relative to the libmp3lame transcode (e.g. user-reported 30 s
+    # download vs. 80 s encode for a 2-hour album), so the bar gives only
+    # 40 % to download and 60 % to encode — closer to wall-clock reality.
     _DL_MAX_PCT = 90
+    _MP3_DL_PCT = 40
 
     def __init__(self, items, options):
         super().__init__()
@@ -732,7 +740,9 @@ class DownloadWorker(QThread):
         audio_path = _ydl_download(
             item['url'], fmt=AUDIO_FORMAT, outtmpl=tmpl,
             ffmpeg_loc=ff_dir,
-            progress_hook=self._make_progress_hook("오디오", batch_index),
+            progress_hook=self._make_progress_hook(
+                "오디오", batch_index, dl_max_pct=self._MP3_DL_PCT,
+            ),
         )
 
         self.log.emit("    MP3로 인코딩 중…")
@@ -744,7 +754,7 @@ class DownloadWorker(QThread):
         try:
             rc, stderr = self._ffmpeg_with_progress(
                 cmd, duration, batch_index,
-                start_pct=self._DL_MAX_PCT, end_pct=100,
+                start_pct=self._MP3_DL_PCT, end_pct=100,
             )
         finally:
             try:

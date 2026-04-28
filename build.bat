@@ -55,7 +55,6 @@ python -m PyInstaller --noconfirm --onefile --windowed --clean ^
     --exclude-module PyQt5.QtSensors ^
     --exclude-module PyQt5.QtSerialPort ^
     --exclude-module PyQt5.QtSql ^
-    --exclude-module PyQt5.QtSvg ^
     --exclude-module PyQt5.QtTest ^
     --exclude-module PyQt5.QtWebChannel ^
     --exclude-module PyQt5.QtWebEngine ^

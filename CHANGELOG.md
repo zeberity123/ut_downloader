@@ -4,6 +4,17 @@ All notable changes to **ut_download (유튜브 다운로더 by Daru)** are reco
 This project follows a loose form of [Keep a Changelog][keep-a-changelog]; date
 format is `YYYY-MM-DD`.
 
+## v1.4.1 — 2026-04-28
+
+### Fixed
+- **Onefile exe crashed on bare PCs** with
+  `ModuleNotFoundError: No module named 'PyQt5.QtSvg'` at app launch.
+  Both `qfluentwidgets.common.icon` and
+  `qframelesswindow.titlebar.title_bar_buttons` import `QtSvg` at top
+  level, so it must be in the bundle. Dropped the
+  `--exclude-module PyQt5.QtSvg` line from `build.bat`. v1.3 had the
+  same latent bug; the dev PC happened to mask it.
+
 ## v1.4 — 2026-04-28
 
 A search-speed pass. Cold search now returns in ~1.2 s instead of 3–8 s

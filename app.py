@@ -48,7 +48,7 @@ from icons import player_icon, download_icon, folder_icon
 from theme import build_qss
 from icons import ensure_checkbox_icons
 
-__version__ = "1.3"
+__version__ = "1.4"
 APP_TITLE = f"유튜브 다운로더 by Daru  v{__version__}"
 DEFAULT_DEST = str(Path.home() / "Downloads")
 
@@ -646,6 +646,8 @@ class MainWindow(QMainWindow):
         self._search_offset = 0
         self._loading_more = False
         self._search_exhausted = False
+        self._search_query = ""              # for cache_extend on load-more
+        self._stream_thumb_buffer: list = []  # batch streaming thumb requests
 
         # audio preview state
         self._audio_cache_dir = os.path.join(tempfile.gettempdir(), 'ut_download_audio')
@@ -1569,7 +1571,8 @@ class MainWindow(QMainWindow):
         self._set_sentinel('loading')
         self._refresh_spinner()
         self._load_more_worker = LoadMoreWorker(
-            self._search_obj, self._search_offset, batch_size=5
+            self._search_obj, self._search_offset, batch_size=5,
+            query=self._search_query,
         )
         self._load_more_worker.new_results.connect(self._on_more_results)
         self._load_more_worker.finished.connect(self._on_more_finished)
@@ -1627,28 +1630,70 @@ class MainWindow(QMainWindow):
         self._search_offset = 0
         self._loading_more = False
         self._search_exhausted = False
+        self._search_query = q
+        self._stream_thumb_buffer = []
 
         self._show_loading()
         self.log(f"검색 중: {q!r} …")
         self.search_btn.setEnabled(False)
         self._search_worker = SearchWorker(q, initial_count=10)
-        self._search_worker.finished_results.connect(self._on_search_results)
+        self._search_worker.cache_hit.connect(self._on_search_cache_hit)
+        self._search_worker.started_search.connect(self._on_search_started)
+        self._search_worker.one_result.connect(self._on_search_one_result)
+        self._search_worker.finished_loading.connect(self._on_search_finished_loading)
         self._search_worker.error.connect(self._on_search_error)
         self._search_worker.finished.connect(lambda: self.search_btn.setEnabled(True))
         self._search_worker.start()
 
-    def _on_search_results(self, results, search_obj):
+    def _on_search_cache_hit(self, results, search_obj):
+        """Repeat-query path. Cached results are already parsed — repaint
+        in one shot, restoring whatever scroll-depth the user reached
+        previously in this session."""
         self._hide_loading()
         self._search_obj = search_obj
         self._search_offset = len(results)
         self._search_exhausted = False
-        self.log(f"  {len(results)}개의 결과를 찾았습니다.")
+        self.log(f"  {len(results)}개의 결과 (캐시됨)")
         for r in results:
             self._add_result_item(r)
         if results:
             self._set_sentinel('idle')
         self._request_thumbnails([r['video_id'] for r in results])
-        # if the initial batch doesn't fill the viewport, eagerly fetch one more page
+        QTimer.singleShot(150, self._maybe_auto_load_more)
+
+    def _on_search_started(self, search_obj):
+        """First signal of a fresh streaming search — Search() has resolved.
+        Hide the spinner so the user sees rows pop in instead of a blank
+        loading view."""
+        self._hide_loading()
+        self._search_obj = search_obj
+        self._search_offset = 0
+        self._search_exhausted = False
+
+    def _on_search_one_result(self, info: dict):
+        """Per-video append. Skip the sentinel here — `_add_result_item`
+        always appends to the end of the list, so creating the sentinel
+        before streaming finishes would push subsequent rows below it.
+        Buffer thumbnail fetches in groups of ~4 so we don't spawn one
+        ThumbnailWorker per row."""
+        self._add_result_item(info)
+        self._search_offset += 1
+        vid = info.get('video_id')
+        if vid:
+            self._stream_thumb_buffer.append(vid)
+        if len(self._stream_thumb_buffer) >= 4:
+            self._request_thumbnails(list(self._stream_thumb_buffer))
+            self._stream_thumb_buffer.clear()
+
+    def _on_search_finished_loading(self, count: int):
+        """Stream complete — flush leftover thumbnails, place sentinel."""
+        if self._stream_thumb_buffer:
+            self._request_thumbnails(list(self._stream_thumb_buffer))
+            self._stream_thumb_buffer.clear()
+        if count > 0:
+            self._set_sentinel('idle')
+        self.log(f"  {count}개의 결과를 찾았습니다.")
+        # if the initial batch didn't fill the viewport, eagerly fetch one more page
         QTimer.singleShot(150, self._maybe_auto_load_more)
 
     def _maybe_auto_load_more(self):

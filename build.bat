@@ -22,7 +22,7 @@ python -m PyInstaller --noconfirm --onefile --windowed --clean ^
     --name ut_download ^
     --icon logo.ico ^
     --add-data "logo.ico;." ^
-    --collect-submodules pytubefix ^
+    --collect-all yt_dlp ^
     --collect-all qfluentwidgets ^
     --collect-all qframelesswindow ^
     --collect-all darkdetect ^

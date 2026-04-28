@@ -4,6 +4,46 @@ All notable changes to **ut_download (유튜브 다운로더 by Daru)** are reco
 This project follows a loose form of [Keep a Changelog][keep-a-changelog]; date
 format is `YYYY-MM-DD`.
 
+## v1.4 — 2026-04-28
+
+A search-speed pass. Cold search now returns in ~1.2 s instead of 3–8 s
+on Korean queries; repeat searches are instant. The backend swap also
+ends the cat-and-mouse with YouTube's bot detection that prompted the
+v1.3 client-fallback code.
+
+### Added
+- **In-memory result cache** keyed by lowercased query. LRU-trimmed at
+  32 entries. Repeat searches restore the full scrolled-through list
+  (initial 10 + every "load more" batch the user pulled this session)
+  without hitting the network. Log shows `(캐시됨)` on a hit.
+- **Streaming search results** — rows now appear as they parse instead of
+  all-at-once after the full list resolves. Sentinel placement deferred
+  to end-of-stream so it stays at the bottom.
+
+### Changed
+- **Backend: yt-dlp** (was `pytubefix`).
+  - Search uses yt-dlp's flat extractor (`extract_flat='in_playlist'`),
+    which returns just IDs / titles / durations / channels in a single
+    InnerTube round-trip — no per-video page fetches.
+  - Single-URL info via `extract_info(url, download=False)`.
+  - Downloads go through `yt_dlp.YoutubeDL` with format selectors
+    mapped from the resolution combo (`bestvideo[ext=mp4][height<=N]`
+    + itag 140 audio); video+audio merging handled inline by yt-dlp
+    when ffmpeg is supplied.
+  - `_make_yt` / `_make_search` clients fallback retired — yt-dlp's own
+    extractor handles bot evasion + format selection robustly.
+- **`_make_search` returns `(search_obj, videos)`** instead of just the
+  search object. `SearchWorker` no longer triggers a redundant
+  `list(s.videos)` round-trip after verification.
+- **`SearchWorker` signal contract**: `cache_hit / started_search /
+  one_result / finished_loading / error` — replaces the all-at-once
+  `finished_results(list, search_obj)`.
+
+### Build
+- `requirements.txt`: `yt-dlp>=2025.1.0` (was `pytubefix>=10.4.0`).
+- `build.bat`: `--collect-all yt_dlp` (was `--collect-submodules pytubefix`).
+- ffmpeg.exe still bundled inside the onefile build.
+
 ## v1.3 — 2026-04-28
 
 ### Added

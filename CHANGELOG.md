@@ -4,6 +4,22 @@ All notable changes to **ut_download (유튜브 다운로더 by Daru)** are reco
 This project follows a loose form of [Keep a Changelog][keep-a-changelog]; date
 format is `YYYY-MM-DD`.
 
+## v1.4.5 — 2026-04-29
+
+### Changed
+- **Audio downloads now prefer the highest available bitrate.**
+  `AUDIO_FORMAT` flipped from `140 / bestaudio[ext=m4a] / bestaudio /
+  best` to `bestaudio / 140 / best`. For most YouTube videos this picks
+  itag 251 (Opus webm at 128–160 kbps) instead of itag 140 (AAC m4a at
+  128 kbps). Same bitrate, more efficient codec — Opus 128 kbps is
+  noticeably cleaner than AAC 128 kbps, and on videos where YouTube
+  serves Opus at 160 kbps the gap is wider. ffmpeg's MP3 transcode
+  handles webm/Opus input the same way it handles m4a/AAC, so the
+  output `.mp3` chain is unchanged. Music-Premium-locked tracks still
+  fall through to combined mp4 (itag 18) → MP3 via the `/best` tail.
+- Renamed the internal `m4a_path` variable to `audio_path` since the
+  source container is no longer guaranteed to be m4a.
+
 ## v1.4.4 — 2026-04-29
 
 ### Changed

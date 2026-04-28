@@ -18,14 +18,14 @@ from PyQt5.QtCore import QThread, pyqtSignal
 import yt_dlp
 
 
-# itag 140 = m4a/AAC 128 kbps. Same audio spec as v1.0–v1.3 builds — keeps
-# the audio-preview cache key stable, and the MP3 transcode chain unchanged.
-# Fallback chain on itag 140 → bestaudio[ext=m4a] → bestaudio handles
-# Music-Premium-locked tracks where 140 isn't published to non-auth clients.
-# Final `best` fallback covers DRM/Premium-locked albums where no audio-only
-# stream is published at all — yt-dlp picks the combined mp4 (e.g. itag 18)
-# and our ffmpeg `-vn` transcode strips the video track during MP3 conversion.
-AUDIO_FORMAT = "140/bestaudio[ext=m4a]/bestaudio/best"
+# Audio source format. Prefer `bestaudio` so we get the highest available
+# bitrate — for most YouTube videos that's itag 251 (Opus webm 160 kbps),
+# which is meaningfully higher quality than itag 140 (AAC m4a 128 kbps).
+# Fall through to `140` (the v1.0–v1.4.4 default) if bestaudio is blocked
+# for some reason, then `best` for Music-Premium-locked albums where no
+# audio-only stream is published — ffmpeg's `-vn` strips the video track
+# during the MP3 transcode regardless of the input container.
+AUDIO_FORMAT = "bestaudio/140/best"
 
 # yt-dlp tries clients in order; the first one that successfully extracts
 # wins, so `default` stays first to keep the common-case fast. The rest
@@ -483,7 +483,7 @@ class AudioDownloadWorker(QThread):
             ff_dir = os.path.dirname(ff) if os.path.isfile(ff) else None
             tmpl = os.path.join(self.dest_dir, f"_tmp_{self.video_id}.%(ext)s")
             try:
-                m4a_path = _ydl_download(
+                audio_path = _ydl_download(
                     self.video_url, fmt=AUDIO_FORMAT, outtmpl=tmpl,
                     ffmpeg_loc=ff_dir,
                 )
@@ -492,14 +492,14 @@ class AudioDownloadWorker(QThread):
                 return
 
             cmd = [ff, '-y', '-loglevel', 'error',
-                   '-i', m4a_path,
+                   '-i', audio_path,
                    '-vn', '-acodec', 'libmp3lame', '-b:a', '128k',
                    cached]
             try:
                 r = subprocess.run(cmd, capture_output=True, **_no_window_kwargs())
             finally:
                 try:
-                    os.remove(m4a_path)
+                    os.remove(audio_path)
                 except OSError:
                     pass
             if r.returncode != 0:
@@ -678,7 +678,7 @@ class DownloadWorker(QThread):
 
         tmpl = os.path.join(dest, f"_tmp_audio_{batch_index}_{os.getpid()}.%(ext)s")
         self.log.emit("    오디오 다운로드 중…")
-        m4a_path = _ydl_download(
+        audio_path = _ydl_download(
             item['url'], fmt=AUDIO_FORMAT, outtmpl=tmpl,
             ffmpeg_loc=ff_dir,
             progress_hook=self._make_progress_hook("오디오", batch_index),
@@ -686,14 +686,14 @@ class DownloadWorker(QThread):
 
         self.log.emit("    MP3로 인코딩 중…")
         cmd = [ff, '-y', '-loglevel', 'error',
-               '-i', m4a_path,
+               '-i', audio_path,
                '-vn', '-acodec', 'libmp3lame', '-b:a', '192k',
                out_path]
         try:
             r = subprocess.run(cmd, capture_output=True, **_no_window_kwargs())
         finally:
             try:
-                os.remove(m4a_path)
+                os.remove(audio_path)
             except OSError:
                 pass
         if r.returncode != 0:

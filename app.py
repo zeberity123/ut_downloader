@@ -43,12 +43,13 @@ except Exception:
 from downloader import (
     SearchWorker, LoadMoreWorker, FetchInfoWorker, DownloadWorker,
     ThumbnailWorker, SuggestWorker, AudioDownloadWorker,
+    UpdateCheckWorker,
 )
 from icons import player_icon, download_icon, folder_icon
 from theme import build_qss
 from icons import ensure_checkbox_icons
 
-__version__ = "1.4.7"
+__version__ = "1.4.8"
 APP_TITLE = f"유튜브 다운로더 by Daru  v{__version__}"
 DEFAULT_DEST = str(Path.home() / "Downloads")
 
@@ -640,6 +641,7 @@ class MainWindow(QMainWindow):
         self._suggest_worker = None
         self._load_more_worker = None
         self._audio_worker = None
+        self._update_check_worker = None
 
         # paginated search state
         self._search_obj = None
@@ -688,6 +690,10 @@ class MainWindow(QMainWindow):
         self._splitter_ref = splitter
         self._split_left_ratio = 0.69
         QTimer.singleShot(0, self._apply_split_ratio)
+        # Fire the update check a couple of seconds after launch — far enough
+        # out that the GitHub round-trip can't slow the cold-start, but soon
+        # enough that the user sees the toast before they get into a flow.
+        QTimer.singleShot(2500, self._check_for_update)
 
     def _apply_split_ratio(self):
         if not getattr(self, '_splitter_ref', None):
@@ -1127,6 +1133,32 @@ class MainWindow(QMainWindow):
     def _toast_success(self, title: str, content: str):
         InfoBar.success(title=title, content=content, isClosable=True,
                         position=InfoBarPosition.TOP, duration=2500, parent=self)
+
+    # ------------------------------------------------------ update check
+    def _check_for_update(self):
+        """Hit GitHub `releases/latest` and surface a sticky toast if a
+        newer tag than `__version__` is available. Failures (offline,
+        rate-limit, GitHub down) are intentionally silent."""
+        if self._update_check_worker and self._update_check_worker.isRunning():
+            return
+        self._update_check_worker = UpdateCheckWorker(__version__)
+        self._update_check_worker.update_available.connect(self._on_update_available)
+        # no_update / error left unconnected — silence on the happy path.
+        self._update_check_worker.start()
+
+    def _on_update_available(self, tag: str, html_url: str):
+        bar = InfoBar.success(
+            title=f"새 버전 v{tag} 사용 가능",
+            content=f"현재 v{__version__} → v{tag}",
+            orient=Qt.Horizontal,
+            isClosable=True,
+            position=InfoBarPosition.TOP_RIGHT,
+            duration=-1,                  # sticky until user dismisses
+            parent=self,
+        )
+        btn = PushButton("GitHub에서 받기")
+        btn.clicked.connect(lambda: webbrowser.open(html_url))
+        bar.addWidget(btn)
 
     def _update_format(self):
         video = self.fmt_video.isChecked()
@@ -2019,7 +2051,8 @@ class MainWindow(QMainWindow):
                 pass
         for w in [self._search_worker, self._fetch_worker, self._download_worker,
                   self._suggest_worker, self._load_more_worker,
-                  self._audio_worker, *self._thumb_workers]:
+                  self._audio_worker, self._update_check_worker,
+                  *self._thumb_workers]:
             if w and w.isRunning():
                 if hasattr(w, 'cancel'):
                     w.cancel()

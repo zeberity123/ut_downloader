@@ -4,6 +4,21 @@ All notable changes to **ut_download (유튜브 다운로더 by Daru)** are reco
 This project follows a loose form of [Keep a Changelog][keep-a-changelog]; date
 format is `YYYY-MM-DD`.
 
+## v1.4.8 — 2026-04-29
+
+### Added
+- **Startup update check.** The app now hits
+  `https://api.github.com/repos/zeberity123/ut_downloader/releases/latest`
+  ~2.5 s after launch (deferred so the cold-start isn't blocked) and,
+  if the latest tag's numeric version is greater than the embedded
+  `__version__`, shows a sticky Fluent `InfoBar` in the top-right with
+  a `GitHub에서 받기` button that opens the release page in the user's
+  browser. New `UpdateCheckWorker` lives in `downloader.py`. The check
+  is intentionally silent on failure — no toast on offline, rate-limit,
+  or any other error path; we don't want a transient connectivity blip
+  to nag the user. No actual self-replacement (Windows can't reliably
+  swap a running exe), just notify and link out.
+
 ## v1.4.7 — 2026-04-29
 
 ### Changed

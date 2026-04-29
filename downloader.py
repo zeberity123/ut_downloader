@@ -454,6 +454,64 @@ class ThumbnailWorker(QThread):
             self.finished_all.emit()
 
 
+class UpdateCheckWorker(QThread):
+    """Hit GitHub's `releases/latest` endpoint once at startup and emit a
+    signal when there's a newer tag than the embedded `__version__`.
+
+    Failures (no network, rate-limited, GitHub down) are intentionally
+    silent — emit `error` and let the UI ignore it. We don't want a
+    transient connectivity issue to nag the user with a toast.
+    """
+    update_available = pyqtSignal(str, str)   # tag (no leading 'v'), html_url
+    no_update        = pyqtSignal()
+    error            = pyqtSignal(str)
+
+    REPO = "zeberity123/ut_downloader"
+
+    def __init__(self, current_version: str):
+        super().__init__()
+        self.current_version = current_version
+
+    @staticmethod
+    def _parse(v: str):
+        """Strict numeric tuple of dotted segments. Returns `None` on any
+        non-numeric component so caller can bail out cleanly rather than
+        silently downgrading users by string-comparing 'rc' against '.0'."""
+        try:
+            v = v.strip().lstrip('v')
+            parts = v.split('.')
+            return tuple(int(p) for p in parts)
+        except (ValueError, AttributeError):
+            return None
+
+    def run(self):
+        try:
+            import json
+            import urllib.request
+            url = f"https://api.github.com/repos/{self.REPO}/releases/latest"
+            req = urllib.request.Request(url, headers={
+                'User-Agent': 'ut_downloader-update-check',
+                'Accept': 'application/vnd.github+json',
+            })
+            with urllib.request.urlopen(req, timeout=8) as resp:
+                data = json.loads(resp.read().decode('utf-8'))
+        except Exception as e:
+            self.error.emit(f"{type(e).__name__}: {e}")
+            return
+
+        latest_tag = (data.get('tag_name') or '').lstrip('v')
+        html_url = data.get('html_url') or ''
+        latest = self._parse(latest_tag)
+        current = self._parse(self.current_version)
+        if latest is None or current is None:
+            self.error.emit(f"version parse failed: latest={latest_tag!r}")
+            return
+        if latest > current:
+            self.update_available.emit(latest_tag, html_url)
+        else:
+            self.no_update.emit()
+
+
 class AudioDownloadWorker(QThread):
     """Download itag 140 (m4a/AAC) via yt-dlp, then transcode to MP3.
 

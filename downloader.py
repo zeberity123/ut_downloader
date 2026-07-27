@@ -241,9 +241,12 @@ def _no_window_kwargs():
 
 # --------------------------------------------------------------- yt-dlp dl
 def _ydl_download(url: str, *, fmt: str, outtmpl: str, ffmpeg_loc: str = None,
-                  progress_hook=None, merge_format: str = None) -> str:
+                  progress_hook=None, merge_format: str = None,
+                  remux_format: str = None) -> str:
     """Run yt-dlp on a single URL, return the saved filepath.
-    `outtmpl` should include `%(ext)s` so yt-dlp picks the actual extension."""
+    `outtmpl` should include `%(ext)s` so yt-dlp picks the actual extension.
+    `remux_format` remuxes a single-stream download into that container
+    (stream copy, no re-encode; skipped when the ext already matches)."""
     saved = []
 
     def hook_collect(d):
@@ -269,6 +272,10 @@ def _ydl_download(url: str, *, fmt: str, outtmpl: str, ffmpeg_loc: str = None,
         opts['ffmpeg_location'] = ffmpeg_loc
     if merge_format:
         opts['merge_output_format'] = merge_format
+    if remux_format:
+        opts['postprocessors'] = [
+            {'key': 'FFmpegVideoRemuxer', 'preferedformat': remux_format},
+        ]
 
     with yt_dlp.YoutubeDL(opts) as ydl:
         info = ydl.extract_info(url, download=True)
@@ -755,6 +762,18 @@ class DownloadWorker(QThread):
         return f"[height<={h}]"
 
     @staticmethod
+    def _resolution_first(target: str) -> bool:
+        """True when the target can exceed 1080p ('Highest', 1440p, 2160p).
+        YouTube publishes >1080p streams only as VP9/AV1 (WebM) — H.264/mp4
+        stops at 1080p — so an mp4-first preference silently caps those
+        targets at 1080p. They must pick by resolution regardless of
+        container; ffmpeg remuxes the result into .mp4 afterwards."""
+        if target == 'Highest':
+            return True
+        m = re.search(r'(\d+)', target)
+        return bool(m) and int(m.group(1)) > 1080
+
+    @staticmethod
     def _merged_format(target: str) -> str:
         """Format string for video + audio download.
 
@@ -770,6 +789,12 @@ class DownloadWorker(QThread):
                     "worstvideo+worstaudio/"
                     "worst[ext=mp4]/worst")
         h = DownloadWorker._height_filter(target)
+        if DownloadWorker._resolution_first(target):
+            # m4a audio first so the merged .mp4 carries AAC (max player
+            # compatibility); yt-dlp handles Opus-in-mp4 on the fallback.
+            return (f"bestvideo{h}+bestaudio[ext=m4a]/"
+                    f"bestvideo{h}+bestaudio/"
+                    f"best{h}/best")
         return (f"bestvideo[ext=mp4]{h}+140/"
                 f"bestvideo[ext=mp4]{h}+bestaudio[ext=m4a]/"
                 f"bestvideo{h}+bestaudio/"
@@ -783,6 +808,8 @@ class DownloadWorker(QThread):
         if target == 'Lowest':
             return "worstvideo[ext=mp4]/worstvideo/worst[ext=mp4]/worst"
         h = DownloadWorker._height_filter(target)
+        if DownloadWorker._resolution_first(target):
+            return f"bestvideo{h}/best{h}/best"
         return (f"bestvideo[ext=mp4]{h}/bestvideo{h}/"
                 f"best[ext=mp4]{h}/best{h}/best")
 
@@ -845,6 +872,7 @@ class DownloadWorker(QThread):
                 fmt=self._video_only_format(target),
                 outtmpl=tmpl,
                 ffmpeg_loc=ff_dir,
+                remux_format='mp4',
                 progress_hook=self._make_progress_hook("비디오", batch_index,
                                                        dl_max_pct=100),
             )

@@ -49,7 +49,7 @@ from icons import player_icon, download_icon, folder_icon
 from theme import build_qss
 from icons import ensure_checkbox_icons
 
-__version__ = "1.4.8"
+__version__ = "1.4.9"
 APP_TITLE = f"유튜브 다운로더 by Daru  v{__version__}"
 DEFAULT_DEST = str(Path.home() / "Downloads")
 
@@ -941,7 +941,7 @@ class MainWindow(QMainWindow):
 
         # row 3: 해상도  [combo]
         self.res_combo = ComboBox()
-        self.res_combo.addItems(["최고 화질", "1080p", "720p", "480p", "360p", "240p", "최저 화질"])
+        self.res_combo.addItems(["최고 화질", "2160p (4K)", "1440p", "1080p", "720p", "480p", "360p", "240p", "최저 화질"])
         v.addLayout(self._row("해상도", self.res_combo))
 
         # row 4: 일괄 파일명 추가  [input]

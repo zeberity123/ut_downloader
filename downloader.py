@@ -277,8 +277,25 @@ def _ydl_download(url: str, *, fmt: str, outtmpl: str, ffmpeg_loc: str = None,
             {'key': 'FFmpegVideoRemuxer', 'preferedformat': remux_format},
         ]
 
-    with yt_dlp.YoutubeDL(opts) as ydl:
-        info = ydl.extract_info(url, download=True)
+    # YouTube sometimes 403s the media URLs of one player client (URL
+    # expiry, unsolved JS challenge, datacenter flagging) while another
+    # client's URLs still work. A retry alone won't help — the URLs come
+    # from extraction — so re-extract with a single specific client to get
+    # fresh URLs. `None` = the normal multi-client extraction.
+    retry_clients = (None, 'android', 'ios', 'tv_embedded')
+    info = None
+    for client in retry_clients:
+        o = dict(opts)
+        if client:
+            o['extractor_args'] = {'youtube': {'player_client': [client]}}
+        try:
+            with yt_dlp.YoutubeDL(o) as ydl:
+                info = ydl.extract_info(url, download=True)
+            break
+        except yt_dlp.utils.DownloadError as e:
+            if 'HTTP Error 403' in str(e) and client != retry_clients[-1]:
+                continue
+            raise
 
     # Most reliable post-merge path is in info['requested_downloads'].
     if info:
